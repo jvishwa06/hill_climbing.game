@@ -1,4 +1,5 @@
 prompt:
+
 Create a complete production-quality browser game called "Hill Climb Racer" using only HTML, CSS, and vanilla JavaScript in a SINGLE self-contained file named `index.html`.
 The output must be fully playable immediately after opening the file in a browser.
 
