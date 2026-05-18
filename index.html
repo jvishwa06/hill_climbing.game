@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Hill Climb Racer</title>
+
+<style>
+    *{
+        margin:0;
+        padding:0;
+        box-sizing:border-box;
+        font-family:Inter,Arial,sans-serif;
+    }
+
+    body{
+        overflow:hidden;
+        background:#87ceeb;
+    }
+
+    canvas{
+        display:block;
+        background:linear-gradient(#87ceeb 0%, #dff4ff 60%, #f2f7ff 100%);
+    }
+
+    .hud{
+        position:fixed;
+        top:15px;
+        left:15px;
+        z-index:10;
+        color:white;
+        text-shadow:0 2px 4px rgba(0,0,0,0.4);
+        user-select:none;
+    }
+
+    .hud h1{
+        font-size:22px;
+        margin-bottom:12px;
+    }
+
+    .stats{
+        display:flex;
+        gap:18px;
+        align-items:center;
+        flex-wrap:wrap;
+    }
+
+    .card{
+        background:rgba(0,0,0,0.25);
+        backdrop-filter:blur(8px);
+        padding:10px 14px;
+        border-radius:14px;
+        min-width:120px;
+    }
+
+    .bar{
+        width:160px;
+        height:16px;
+        background:rgba(255,255,255,0.2);
+        border-radius:999px;
+        overflow:hidden;
+        margin-top:8px;
+    }
+
+    .barFill{
+        height:100%;
+        width:100%;
+        background:linear-gradient(90deg,#2ecc71,#f1c40f,#e74c3c);
+        transition:width 0.15s;
+    }
+
+    .gameOver{
+        position:fixed;
+        inset:0;
+        display:none;
+        justify-content:center;
+        align-items:center;
+        background:rgba(0,0,0,0.55);
+        z-index:20;
+    }
+
+    .panel{
+        width:320px;
+        background:white;
+        border-radius:24px;
+        padding:28px;
+        text-align:center;
+        box-shadow:0 15px 50px rgba(0,0,0,0.25);
+    }
+
+    .panel h2{
+        margin-bottom:10px;
+        font-size:34px;
+    }
+
+    .panel p{
+        color:#555;
+        margin-bottom:20px;
+    }
+
+    button{
+        border:none;
+        padding:14px 20px;
+        border-radius:14px;
+        cursor:pointer;
+        font-size:16px;
+        font-weight:600;
+        transition:0.2s;
+    }
+
+    button:hover{
+        transform:translateY(-2px);
+    }
+
+    .restartBtn{
+        background:#111;
+        color:white;
+        width:100%;
+    }
+
+    .upgrades{
+        margin-top:18px;
+        display:flex;
+        flex-direction:column;
+        gap:10px;
+    }
+
+    .upgradeBtn{
+        background:#f2f2f2;
+    }
+
+    .mobileControls{
+        position:fixed;
+        bottom:20px;
+        left:0;
+        width:100%;
+        display:none;
+        justify-content:space-between;
+        padding:0 20px;
+        z-index:15;
+    }
+
+    .mobileBtn{
+        width:90px;
+        height:90px;
+        border-radius:50%;
+        background:rgba(255,255,255,0.25);
+        backdrop-filter:blur(6px);
+        border:2px solid rgba(255,255,255,0.4);
+        color:white;
+        font-size:36px;
+        display:flex;
+        justify-content:center;
+        align-items:center;
+        user-select:none;
+    }
+
+    @media (max-width:900px){
+        .mobileControls{
+            display:flex;
+        }
+    }
+</style>
+</head>
+<body>
+
+<canvas id="game"></canvas>
+
+<div class="hud">
+    <h1>Hill Climb Racer</h1>
+
+    <div class="stats">
+        <div class="card">
+            <div>Distance</div>
+            <strong id="score">0 m</strong>
+        </div>
+
+        <div class="card">
+            <div>Coins</div>
+            <strong id="coins">0</strong>
+        </div>
+
+        <div class="card">
+            <div>Speed</div>
+            <strong id="speed">0 km/h</strong>
+        </div>
+
+        <div class="card">
+            <div>Fuel</div>
+            <div class="bar">
+                <div class="barFill" id="fuelBar"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="gameOver" id="gameOver">
+    <div class="panel">
+        <h2>Game Over</h2>
+        <p id="finalScore">Distance: 0m</p>
+
+        <button class="restartBtn" onclick="restartGame()">
+            Restart
+        </button>
+
+        <div class="upgrades">
+            <button class="upgradeBtn" onclick="buyUpgrade('speed')">
+                Upgrade Engine (+Speed)
+            </button>
+
+            <button class="upgradeBtn" onclick="buyUpgrade('fuel')">
+                Upgrade Fuel Tank
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="mobileControls">
+    <div class="mobileBtn" id="leftBtn">◀</div>
+    <div class="mobileBtn" id="rightBtn">▶</div>
+</div>
+
+<script>
+/* =========================================================
+    HILL CLIMB RACING GAME
+    Single-file HTML/CSS/JS implementation
+========================================================= */
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+function resize(){
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener("resize", resize);
+
+/* =========================================================
+    AUDIO
+========================================================= */
+
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function beep(freq=300, duration=0.08, volume=0.03){
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+
+    osc.frequency.value = freq;
+    osc.type = "square";
+
+    gain.gain.value = volume;
+
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    osc.start();
+
+    setTimeout(()=>{
+        osc.stop();
+    }, duration * 1000);
+}
+
+/* =========================================================
+    INPUT
+========================================================= */
+
+const keys = {
+    left:false,
+    right:false
+};
+
+window.addEventListener("keydown", e=>{
+    if(["ArrowRight","d","D"].includes(e.key)) keys.right = true;
+    if(["ArrowLeft","a","A"].includes(e.key)) keys.left = true;
+});
+
+window.addEventListener("keyup", e=>{
+    if(["ArrowRight","d","D"].includes(e.key)) keys.right = false;
+    if(["ArrowLeft","a","A"].includes(e.key)) keys.left = false;
+});
+
+/* Mobile */
+const leftBtn = document.getElementById("leftBtn");
+const rightBtn = document.getElementById("rightBtn");
+
+function bindMobile(btn, key){
+    btn.addEventListener("touchstart", e=>{
+        e.preventDefault();
+        keys[key] = true;
+    });
+
+    btn.addEventListener("touchend", ()=>{
+        keys[key] = false;
+    });
+}
+
+bindMobile(leftBtn, "left");
+bindMobile(rightBtn, "right");
+
+/* =========================================================
+    TERRAIN
+========================================================= */
+
+const terrain = [];
+
+function generateTerrain(){
+    terrain.length = 0;
+
+    let x = -200;
+    let y = canvas.height * 0.7;
+
+    for(let i=0;i<4000;i++){
+        y += Math.sin(i * 0.25) * 12;
+        y += (Math.random() - 0.5) * 14;
+
+        y = Math.max(canvas.height * 0.35,
+            Math.min(canvas.height * 0.85, y));
+
+        terrain.push({
+            x,
+            y
+        });
+
+        x += 40;
+    }
+}
+
+generateTerrain();
+
+function getTerrainY(x){
+
+    const index = Math.floor((x + 200) / 40);
+
+    if(index < 0 || index >= terrain.length - 1){
+        return canvas.height;
+    }
+
+    const p1 = terrain[index];
+    const p2 = terrain[index + 1];
+
+    const t = (x - p1.x) / (p2.x - p1.x);
+
+    return p1.y + (p2.y - p1.y) * t;
+}
+
+function getTerrainAngle(x){
+
+    const y1 = getTerrainY(x - 5);
+    const y2 = getTerrainY(x + 5);
+
+    return Math.atan2(y2 - y1, 10);
+}
+
+/* =========================================================
+    COLLECTIBLES
+========================================================= */
+
+const coins = [];
+const fuels = [];
+
+function generateItems(){
+
+    for(let i=10;i<terrain.length;i+=12){
+
+        const tx = terrain[i].x;
+        const ty = terrain[i].y;
+
+        if(Math.random() > 0.4){
+            coins.push({
+                x:tx,
+                y:ty - 60,
+                collected:false
+            });
+        }
+
+        if(Math.random() > 0.88){
+            fuels.push({
+                x:tx,
+                y:ty - 80,
+                collected:false
+            });
+        }
+    }
+}
+
+generateItems();
+
+/* =========================================================
+    VEHICLE
+========================================================= */
+
+const upgrades = {
+    speed:0,
+    fuel:0
+};
+
+class Car{
+
+    constructor(){
+        this.x = 150;
+        this.y = 200;
+
+        this.vx = 0;
+        this.vy = 0;
+
+        this.angle = 0;
+        this.angularVelocity = 0;
+
+        this.width = 90;
+        this.height = 36;
+
+        this.wheelRadius = 20;
+
+        this.fuel = 100;
+        this.maxFuel = 100;
+
+        this.dead = false;
+    }
+
+    update(dt){
+
+        if(this.dead) return;
+
+        const gravity = 1400;
+
+        this.vy += gravity * dt;
+
+        let accel = 0;
+
+        if(keys.right && this.fuel > 0){
+            accel = 700 + upgrades.speed * 120;
+            this.fuel -= 7 * dt;
+            beep(90,0.01,0.002);
+        }
+
+        if(keys.left){
+            accel = -420;
+        }
+
+        const groundAngle = getTerrainAngle(this.x);
+
+        this.vx += Math.cos(groundAngle) * accel * dt;
+
+        this.vx *= 0.992;
+
+        this.x += this.vx * dt;
+        this.y += this.vy * dt;
+
+        const groundY = getTerrainY(this.x);
+
+        if(this.y > groundY - 35){
+
+            this.y = groundY - 35;
+
+            this.vy = 0;
+
+            this.angle = groundAngle;
+
+            this.angularVelocity *= 0.7;
+
+        }else{
+
+            this.angularVelocity += (this.vx * 0.00004);
+            
+            this.angularVelocity *= 0.95;
+
+            this.angle += this.angularVelocity;
+        }
+
+        /* Crash detection */
+        if(Math.abs(this.angle) > 2.3){
+            this.dead = true;
+            endGame();
+        }
+
+        /* Fuel out */
+        if(this.fuel <= 0){
+            this.fuel = 0;
+
+            if(Math.abs(this.vx) < 20){
+                this.dead = true;
+                endGame();
+            }
+        }
+
+        /* Clamp */
+        if(this.vx > 1200) this.vx = 1200;
+    }
+
+    draw(){
+
+        ctx.save();
+
+        ctx.translate(this.x - camera.x, this.y);
+
+        ctx.rotate(this.angle);
+
+        /* Body */
+        ctx.fillStyle = "#ff5b5b";
+        roundRect(
+            -45,
+            -30,
+            90,
+            28,
+            10,
+            true
+        );
+
+        ctx.fillStyle = "#202020";
+        roundRect(
+            -12,
+            -50,
+            38,
+            20,
+            8,
+            true
+        );
+
+        /* Wheels */
+        ctx.fillStyle = "#111";
+
+        drawWheel(-28,0);
+        drawWheel(28,0);
+
+        ctx.restore();
+    }
+}
+
+function drawWheel(x,y){
+    ctx.beginPath();
+    ctx.arc(x,y,20,0,Math.PI*2);
+    ctx.fill();
+
+    ctx.strokeStyle = "#999";
+    ctx.lineWidth = 4;
+
+    ctx.beginPath();
+    ctx.arc(x,y,8,0,Math.PI*2);
+    ctx.stroke();
+}
+
+function roundRect(x,y,w,h,r,fill){
+    ctx.beginPath();
+
+    ctx.moveTo(x+r,y);
+
+    ctx.lineTo(x+w-r,y);
+    ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+
+    ctx.lineTo(x+w,y+h-r);
+    ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+
+    ctx.lineTo(x+r,y+h);
+    ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+
+    ctx.lineTo(x,y+r);
+    ctx.quadraticCurveTo(x,y,x+r,y);
+
+    if(fill) ctx.fill();
+}
+
+const car = new Car();
+
+/* =========================================================
+    CAMERA
+========================================================= */
+
+const camera = {
+    x:0
+};
+
+/* =========================================================
+    GAME STATE
+========================================================= */
+
+let distance = 0;
+let coinScore = 0;
+
+function update(dt){
+
+    car.update(dt);
+
+    camera.x += ((car.x - canvas.width * 0.3) - camera.x) * 0.08;
+
+    distance = Math.max(distance, Math.floor(car.x / 10));
+
+    checkCollectibles();
+
+    updateHUD();
+}
+
+function checkCollectibles(){
+
+    for(const coin of coins){
+
+        if(coin.collected) continue;
+
+        const dx = coin.x - car.x;
+        const dy = coin.y - car.y;
+
+        if(Math.hypot(dx,dy) < 40){
+
+            coin.collected = true;
+
+            coinScore += 10;
+
+            beep(700,0.06,0.05);
+        }
+    }
+
+    for(const fuel of fuels){
+
+        if(fuel.collected) continue;
+
+        const dx = fuel.x - car.x;
+        const dy = fuel.y - car.y;
+
+        if(Math.hypot(dx,dy) < 45){
+
+            fuel.collected = true;
+
+            car.fuel = Math.min(
+                car.maxFuel,
+                car.fuel + 40
+            );
+
+            beep(250,0.15,0.05);
+        }
+    }
+}
+
+function draw(){
+
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    drawBackground();
+
+    drawTerrain();
+
+    drawCollectibles();
+
+    car.draw();
+}
+
+function drawBackground(){
+
+    /* Mountains */
+
+    ctx.fillStyle = "rgba(90,110,150,0.25)";
+
+    for(let i=0;i<6;i++){
+
+        const mx = (i * 500) - (camera.x * 0.2 % 500);
+
+        ctx.beginPath();
+
+        ctx.moveTo(mx, canvas.height);
+
+        ctx.lineTo(mx + 250, canvas.height - 280);
+
+        ctx.lineTo(mx + 500, canvas.height);
+
+        ctx.fill();
+    }
+}
+
+function drawTerrain(){
+
+    ctx.beginPath();
+
+    ctx.moveTo(-9999, canvas.height);
+
+    for(let i = 0; i < terrain.length; i++){
+
+        const p = terrain[i];
+        const nextP = terrain[i + 1];
+
+        if(!nextP) {
+            ctx.lineTo(p.x - camera.x, p.y);
+            continue;
+        }
+
+        const cpx = (p.x + nextP.x) / 2 - camera.x;
+        const cpy = (p.y + nextP.y) / 2;
+
+        ctx.quadraticCurveTo(p.x - camera.x, p.y, cpx, cpy);
+    }
+
+    ctx.lineTo(99999, canvas.height);
+
+    ctx.fillStyle = "#4caf50";
+    ctx.fill();
+
+    /* Ground detail */
+
+    ctx.strokeStyle = "#3e8e41";
+    ctx.lineWidth = 4;
+    ctx.stroke();
+}
+
+function drawCollectibles(){
+
+    for(const coin of coins){
+
+        if(coin.collected) continue;
+
+        ctx.beginPath();
+
+        ctx.fillStyle = "gold";
+
+        ctx.arc(
+            coin.x - camera.x,
+            coin.y,
+            12,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.fill();
+    }
+
+    for(const fuel of fuels){
+
+        if(fuel.collected) continue;
+
+        const x = fuel.x - camera.x;
+        const y = fuel.y;
+
+        ctx.fillStyle = "#ff3b3b";
+
+        roundRect(x - 14, y - 18, 28, 36, 6, true);
+
+        ctx.fillStyle = "white";
+        ctx.font = "bold 18px Arial";
+        ctx.fillText("F", x - 6, y + 6);
+    }
+}
+
+function updateHUD(){
+
+    document.getElementById("score").innerText =
+        distance + " m";
+
+    document.getElementById("coins").innerText =
+        coinScore;
+
+    document.getElementById("speed").innerText =
+        Math.abs(Math.floor(car.vx * 0.18)) + " km/h";
+
+    document.getElementById("fuelBar").style.width =
+        (car.fuel / car.maxFuel * 100) + "%";
+}
+
+/* =========================================================
+    GAME OVER
+========================================================= */
+
+function endGame(){
+
+    document.getElementById("gameOver").style.display = "flex";
+
+    document.getElementById("finalScore").innerText =
+        `Distance: ${distance}m | Coins: ${coinScore}`;
+}
+
+function restartGame(){
+
+    location.reload();
+}
+
+function buyUpgrade(type){
+
+    if(type === "speed" && coinScore >= 50){
+
+        upgrades.speed++;
+        coinScore -= 50;
+    }
+
+    if(type === "fuel" && coinScore >= 50){
+
+        upgrades.fuel++;
+        car.maxFuel += 25;
+        car.fuel = car.maxFuel;
+
+        coinScore -= 50;
+    }
+
+    updateHUD();
+}
+
+/* =========================================================
+    GAME LOOP
+========================================================= */
+
+let last = performance.now();
+
+function loop(now){
+
+    const dt = Math.min((now - last) / 1000, 0.03);
+
+    last = now;
+
+    update(dt);
+
+    draw();
+
+    requestAnimationFrame(loop);
+}
+
+requestAnimationFrame(loop);
+
+</script>
+</body>
+</html>
